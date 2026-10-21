@@ -1,6 +1,7 @@
 package com.watch.schedule
 
 import android.app.Activity
+import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -9,7 +10,10 @@ import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
+import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -40,10 +44,15 @@ data class LiveStatus(
     val timerColorHex: String,
     val labelText: String,
     val currentText: String,
-    val nextText: String
+    val nextText: String,
+    val progressPercent: Int,
+    val footerTodayText: String,
+    val footerWeekendText: String
 )
 
 object ScheduleRepo {
+    private const val PREFS_NAME = "watch_schedule_prefs"
+
     val bells = listOf(
         Bell(1, 8, 30, 9, 15),
         Bell(2, 9, 25, 10, 10),
@@ -102,10 +111,148 @@ object ScheduleRepo {
         )
     )
 
-    fun getLiveStatus(): LiveStatus {
+    fun getRoom(context: Context, day: Int, lessonNum: Int, defaultRoom: String): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val custom = prefs.getString("room_${day}_$lessonNum", null)
+        return if (!custom.isNullOrEmpty()) "$custom*" else defaultRoom
+    }
+
+    fun setCustomRoom(context: Context, day: Int, lessonNum: Int, newRoom: String?) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+        if (newRoom.isNullOrBlank()) {
+            prefs.remove("room_${day}_$lessonNum")
+        } else {
+            prefs.putString("room_${day}_$lessonNum", newRoom.trim())
+        }
+        prefs.apply()
+    }
+
+    fun getCheatSheet(subjectName: String): Pair<String, String> {
+        val s = subjectName.lowercase(Locale.getDefault())
+        return when {
+            s.contains("алгебр") -> "Шпора: Алгебра" to
+                "• Квадратное ур-е: ax² + bx + c = 0\n" +
+                "  D = b² - 4ac\n" +
+                "  x = (-b ± √D) / 2a\n\n" +
+                "• Теорема Виета (при a=1):\n" +
+                "  x₁ + x₂ = -b  |  x₁ · x₂ = c\n\n" +
+                "• Формулы (ФСУ):\n" +
+                "  (a±b)² = a² ± 2ab + b²\n" +
+                "  a² - b² = (a - b)(a + b)\n\n" +
+                "• Степени и корни:\n" +
+                "  aⁿ · aᵐ = aⁿ⁺ᵐ  |  (aⁿ)ᵐ = aⁿᵐ\n" +
+                "  √(a·b) = √a · √b"
+
+            s.contains("геометр") -> "Шпора: Геометрия" to
+                "• Теорема Пифагора:\n" +
+                "  c² = a² + b²\n\n" +
+                "• Площади фигур:\n" +
+                "  Треугольник: S = ½ · a · h\n" +
+                "  Параллелограмм: S = a · h\n" +
+                "  Трапеция: S = ((a + b) / 2) · h\n" +
+                "  Ромб: S = ½ · d₁ · d₂\n\n" +
+                "• Тригонометрия (прям. тр-к):\n" +
+                "  sin α = противолеж / гипотенуза\n" +
+                "  cos α = прилеж / гипотенуза\n" +
+                "  tg α = противолеж / прилеж"
+
+            s.contains("физик") -> "Шпора: Физика" to
+                "• Тепловые явления:\n" +
+                "  Нагрев: Q = c · m · Δt\n" +
+                "  Плавление: Q = λ · m\n" +
+                "  Парообразование: Q = L · m\n" +
+                "  Сгорание топлива: Q = q · m\n\n" +
+                "• Электричество:\n" +
+                "  Закон Ома: I = U / R\n" +
+                "  Сопротивление: R = ρ · l / S\n" +
+                "  Мощность: P = U · I\n" +
+                "  Работа тока: A = U · I · t\n" +
+                "  Закон Джоуля-Ленца: Q = I²Rt"
+
+            s.contains("хими") -> "Шпора: Химия" to
+                "• Основные формулы:\n" +
+                "  Кол-во вещ-ва: n = m / M\n" +
+                "  Объем газа: V = n · Vm (Vm = 22.4 л/моль)\n" +
+                "  Массовая доля: ω = m(в-ва) / m(р-ра)\n\n" +
+                "• Кислоты:\n" +
+                "  HCl (соляная), H₂SO₄ (серная),\n" +
+                "  HNO₃ (азотная), H₃PO₄ (фосфорная),\n" +
+                "  H₂CO₃ (угольная), H₂SiO₃ (кремниевая)\n\n" +
+                "• Ряд активности металлов:\n" +
+                "  Li K Ba Ca Na Mg Al Zn Fe Ni Sn Pb (H₂) Cu Hg Ag Au"
+
+            s.contains("вероятн") -> "Вероятность и стат." to
+                "• Вероятность события:\n" +
+                "  P(A) = m / n\n" +
+                "  (m — благопр. исходы, n — все)\n\n" +
+                "• Статистика:\n" +
+                "  Среднее арифм. — сумма / кол-во\n" +
+                "  Медиана — число посередине упорядоченного ряда\n" +
+                "  Размах — разность макс. и мин."
+
+            s.contains("русский") -> "Шпора: Русский язык" to
+                "• Чередующиеся корни:\n" +
+                "  -ГАР-/-ГОР- (под удар. А, без — О)\n" +
+                "  -ЗАР-/-ЗОР- (без удар. А)\n" +
+                "  -КАС-/-КОС-, -ЛАГ-/-ЛОЖ- (А перед суффиксом -А-)\n" +
+                "  -РАСТ-/-РАЩ-/-РОС-\n\n" +
+                "• Н и НН в причастиях и прил.:\n" +
+                "  НН: суффиксы -ова-/-ева-, есть приставка (кроме не-), есть завис. слова, от глаг. сов. вида.\n" +
+                "  Н: краткие причастия (сделана)."
+
+            s.contains("английск") -> "Шпора: Английский" to
+                "• Времена глагола:\n" +
+                "  Present Simple: V / Vs (do/does)\n" +
+                "  Present Cont: am/is/are + Ving\n" +
+                "  Past Simple: V2 / Ved (did)\n" +
+                "  Present Perfect: have/has + V3\n" +
+                "  Future Simple: will + V\n\n" +
+                "• Неправильные глаголы:\n" +
+                "  be - was/were - been\n" +
+                "  go - went - gone\n" +
+                "  do - did - done\n" +
+                "  see - saw - seen\n" +
+                "  take - took - taken"
+
+            s.contains("истори") -> "Шпора: История" to
+                "• Важные эпохи (XVIII век):\n" +
+                "  1682–1725 — Петр I\n" +
+                "  1700–1721 — Северная война\n" +
+                "  1703 — Основание СПб\n" +
+                "  1721 — Провозглашение Империи\n" +
+                "  1725–1762 — Дворцовые перевороты\n" +
+                "  1762–1796 — Екатерина II\n" +
+                "  1796–1801 — Павел I"
+
+            s.contains("информат") -> "Шпора: Информатика" to
+                "• Степени двойки:\n" +
+                "  2³=8 | 2⁴=16 | 2⁵=32 | 2⁶=64\n" +
+                "  2⁷=128 | 2⁸=256 | 2⁹=512 | 2¹⁰=1024\n\n" +
+                "• Единицы памяти:\n" +
+                "  1 байт = 8 бит\n" +
+                "  1 Кбайт = 1024 байт\n\n" +
+                "• Логика:\n" +
+                "  И (AND, ∧) — истина, когда оба 1\n" +
+                "  ИЛИ (OR, ∨) — истина, если хотя бы один 1\n" +
+                "  НЕ (NOT, ¬) — инверсия"
+
+            else -> subjectName to
+                "• Полезные фишки часов:\n\n" +
+                "1. Зажми палец на уроке в списке, чтобы временно поменять номер кабинета.\n\n" +
+                "2. Нажми на маленькие часы в самом верху главного экрана, чтобы включить тусклый «Стелс-режим»."
+        }
+    }
+
+    fun getLiveStatus(context: Context): LiveStatus {
         val now = Calendar.getInstance()
         val dayOfWeek = now.get(Calendar.DAY_OF_WEEK)
-        val nowMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+        val h = now.get(Calendar.HOUR_OF_DAY)
+        val m = now.get(Calendar.MINUTE)
+        val s = now.get(Calendar.SECOND)
+        val nowSeconds = h * 3600 + m * 60 + s
+        val nowMinutes = h * 60 + m
+
+        val weekendText = calcWeekendCountdown(dayOfWeek, nowMinutes)
 
         val todayLessons = schedule[dayOfWeek]
             ?: return LiveStatus(
@@ -113,86 +260,182 @@ object ScheduleRepo {
                 "#64D2FF",
                 "Расписание 8В",
                 "Уроков сегодня нет",
-                "Пн: Разговор о важном (315)"
+                "Пн: Разговор о важном (${getRoom(context, Calendar.MONDAY, 1, "315")})",
+                100,
+                "Сегодня выходной день",
+                weekendText
             )
 
         val firstBell = bells.first()
         val lastBell = bells.last()
 
-        if (nowMinutes < firstBell.startTotal) {
-            val diffMin = firstBell.startTotal - nowMinutes
+        if (nowSeconds < firstBell.startTotal * 60) {
+            val diffSec = firstBell.startTotal * 60 - nowSeconds
+            val diffMin = (diffSec + 59) / 60
             val firstLesson = todayLessons.first()
+            val room1 = getRoom(context, dayOfWeek, 1, firstLesson.room)
+            val room2 = getRoom(context, dayOfWeek, 2, todayLessons[1].room)
+            val timerStr = if (diffSec < 300) {
+                String.format(Locale.getDefault(), "До урока: %02d:%02d", diffSec / 60, diffSec % 60)
+            } else {
+                "До уроков: $diffMin мин"
+            }
             return LiveStatus(
-                "До уроков: $diffMin мин",
+                timerStr,
                 "#FFD60A",
                 "Скоро 1 урок (8:30)",
-                "${firstLesson.name} (${firstLesson.room})",
-                "Дальше: ${todayLessons[1].name} (${todayLessons[1].room})"
+                "${firstLesson.name} ($room1)",
+                "Дальше: ${todayLessons[1].name} ($room2)",
+                0,
+                "Впереди 7 уроков (до 15:25)",
+                weekendText
             )
         }
 
-        if (nowMinutes >= lastBell.endTotal) {
+        if (nowSeconds >= lastBell.endTotal * 60) {
             return LiveStatus(
                 "Уроки кончились!",
                 "#30D158",
-                "Свободен",
+                "Свободен (7 из 7 позади)",
                 "Можно идти домой",
-                "Хорошего отдыха!"
+                "Хорошего отдыха!",
+                100,
+                "Учебный день завершен!",
+                weekendText
             )
+        }
+
+        val totalSchoolRemainingMin = (lastBell.endTotal * 60 - nowSeconds + 59) / 60
+        val remH = totalSchoolRemainingMin / 60
+        val remM = totalSchoolRemainingMin % 60
+        val todayFooter = if (remH > 0) {
+            "До конца дня (15:25): $remH ч $remM мин"
+        } else {
+            "До конца дня (15:25): $remM мин"
         }
 
         for (i in bells.indices) {
             val bell = bells[i]
             val lesson = todayLessons[i]
+            val startSec = bell.startTotal * 60
+            val endSec = bell.endTotal * 60
 
-            if (nowMinutes >= bell.startTotal && nowMinutes < bell.endTotal) {
-                val leftMin = bell.endTotal - nowMinutes
+            if (nowSeconds in startSec until endSec) {
+                val leftSec = endSec - nowSeconds
+                val leftMin = (leftSec + 59) / 60
+                val totalLessonSec = endSec - startSec
+                val passedSec = nowSeconds - startSec
+                val pct = ((passedSec * 100) / totalLessonSec).coerceIn(0, 100)
+
+                val roomCur = getRoom(context, dayOfWeek, lesson.num, lesson.room)
                 val nextStr = if (i + 1 < todayLessons.size) {
                     val nextLesson = todayLessons[i + 1]
-                    "Дальше: ${nextLesson.name} (${nextLesson.room})"
+                    val roomNext = getRoom(context, dayOfWeek, nextLesson.num, nextLesson.room)
+                    "Дальше: ${nextLesson.name} ($roomNext)"
                 } else {
                     "Это последний урок!"
                 }
+
+                val timerStr = if (leftSec <= 300) {
+                    String.format(Locale.getDefault(), "Звонок: %02d:%02d", leftSec / 60, leftSec % 60)
+                } else {
+                    "Звонок через $leftMin мин"
+                }
+
                 return LiveStatus(
-                    "Звонок через $leftMin мин",
+                    timerStr,
                     "#30D158",
-                    "Сейчас ${bell.num} урок (${bell.timeStr})",
-                    "${lesson.name} • каб. ${lesson.room}",
-                    nextStr
+                    "${bell.num} урок (${bell.timeStr}) • $pct%",
+                    "${lesson.name} • каб. $roomCur",
+                    nextStr,
+                    pct,
+                    todayFooter,
+                    weekendText
                 )
             }
 
             if (i + 1 < bells.size) {
                 val nextBell = bells[i + 1]
-                if (nowMinutes >= bell.endTotal && nowMinutes < nextBell.startTotal) {
-                    val leftMin = nextBell.startTotal - nowMinutes
+                val nextStartSec = nextBell.startTotal * 60
+                if (nowSeconds in endSec until nextStartSec) {
+                    val leftSec = nextStartSec - nowSeconds
+                    val leftMin = (leftSec + 59) / 60
+                    val totalBreakSec = nextStartSec - endSec
+                    val passedBreakSec = nowSeconds - endSec
+                    val pct = ((passedBreakSec * 100) / totalBreakSec).coerceIn(0, 100)
+
                     val nextLesson = todayLessons[i + 1]
+                    val roomNext = getRoom(context, dayOfWeek, nextLesson.num, nextLesson.room)
+
+                    val timerStr = if (leftSec <= 180) {
+                        String.format(Locale.getDefault(), "Урок через %02d:%02d", leftSec / 60, leftSec % 60)
+                    } else {
+                        "Перемена! $leftMin мин"
+                    }
+
                     return LiveStatus(
-                        "Перемена! $leftMin мин",
+                        timerStr,
                         "#FF9F0A",
-                        "Иди на ${nextBell.num} урок",
-                        "${nextLesson.name} • каб. ${nextLesson.room}",
-                        "Звонок в ${String.format(Locale.getDefault(), "%d:%02d", nextBell.startH, nextBell.startM)}"
+                        "Иди на ${nextBell.num} урок • $pct%",
+                        "${nextLesson.name} • каб. $roomNext",
+                        "Звонок в ${String.format(Locale.getDefault(), "%d:%02d", nextBell.startH, nextBell.startM)}",
+                        pct,
+                        todayFooter,
+                        weekendText
                     )
                 }
             }
         }
 
-        return LiveStatus("Расписание 8В", "#30D158", "", "", "")
+        return LiveStatus("Расписание 8В", "#30D158", "", "", "", 0, "", weekendText)
+    }
+
+    private fun calcWeekendCountdown(dayOfWeek: Int, nowMinutes: Int): String {
+        val fridayEnd = 15 * 60 + 25
+        val dayIndex = when (dayOfWeek) {
+            Calendar.MONDAY -> 0
+            Calendar.TUESDAY -> 1
+            Calendar.WEDNESDAY -> 2
+            Calendar.THURSDAY -> 3
+            Calendar.FRIDAY -> 4
+            else -> return "Сейчас выходные — отдыхай!"
+        }
+        val minutesUntilFridayEnd = (4 - dayIndex) * 24 * 60 + (fridayEnd - nowMinutes)
+        if (minutesUntilFridayEnd <= 0) return "Учебная неделя позади! Выходные!"
+        val d = minutesUntilFridayEnd / (24 * 60)
+        val h = (minutesUntilFridayEnd % (24 * 60)) / 60
+        val m = minutesUntilFridayEnd % 60
+        return if (d > 0) {
+            "До выходных: $d дн $h ч"
+        } else {
+            "До выходных: $h ч $m мин"
+        }
     }
 }
 
 class MainActivity : Activity() {
 
+    private lateinit var rootFrame: FrameLayout
+    private lateinit var mainScrollView: ScrollView
+    private lateinit var overlayScrollView: ScrollView
+    private lateinit var overlayContainer: LinearLayout
+
     private lateinit var tvClock: TextView
     private lateinit var tvTimerBig: TextView
     private lateinit var tvCurrentLabel: TextView
     private lateinit var tvCurrentSubject: TextView
+    private lateinit var progressFillView: View
+    private lateinit var progressEmptyView: View
     private lateinit var tvNextSubject: TextView
     private lateinit var lessonsListContainer: LinearLayout
     private lateinit var dayButtonsContainer: LinearLayout
+    private lateinit var tvFooterToday: TextView
+    private lateinit var tvFooterWeekend: TextView
 
     private var selectedDay: Int = Calendar.MONDAY
+    private var stealthMode: Boolean = false
+    private var lastRenderedMinute: Int = -1
+
     private val handler = Handler(Looper.getMainLooper())
     private val tickRunnable = object : Runnable {
         override fun run() {
@@ -207,7 +450,11 @@ class MainActivity : Activity() {
         val today = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
         selectedDay = if (ScheduleRepo.schedule.containsKey(today)) today else Calendar.MONDAY
 
-        val scrollView = ScrollView(this).apply {
+        rootFrame = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+        }
+
+        mainScrollView = ScrollView(this).apply {
             setBackgroundColor(Color.BLACK)
             isVerticalScrollBarEnabled = false
             isFocusable = true
@@ -217,13 +464,20 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(18), dp(28), dp(18), dp(48))
+            setPadding(dp(18), dp(26), dp(18), dp(52))
         }
 
         tvClock = TextView(this).apply {
             setTextColor(Color.parseColor("#8E8E93"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+            setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                stealthMode = !stealthMode
+                rootFrame.alpha = if (stealthMode) 0.32f else 1.0f
+                updateLiveStatus()
+            }
         }
         root.addView(tvClock)
 
@@ -232,7 +486,7 @@ class MainActivity : Activity() {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
             setTypeface(Typeface.SANS_SERIF, Typeface.BOLD)
             gravity = Gravity.CENTER
-            setPadding(0, dp(4), 0, dp(8))
+            setPadding(0, dp(2), 0, dp(8))
         }
         root.addView(tvTimerBig)
 
@@ -247,295 +501,4 @@ class MainActivity : Activity() {
             )
         }
 
-        tvCurrentLabel = TextView(this).apply {
-            setTextColor(Color.parseColor("#98989D"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            gravity = Gravity.CENTER
-        }
-        liveCard.addView(tvCurrentLabel)
-
-        tvCurrentSubject = TextView(this).apply {
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            setTypeface(Typeface.SANS_SERIF, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(2), 0, dp(6))
-        }
-        liveCard.addView(tvCurrentSubject)
-
-        tvNextSubject = TextView(this).apply {
-            setTextColor(Color.parseColor("#64D2FF"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            gravity = Gravity.CENTER
-        }
-        liveCard.addView(tvNextSubject)
-
-        root.addView(liveCard)
-
-        dayButtonsContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, dp(14), 0, dp(8))
-        }
-        root.addView(dayButtonsContainer)
-
-        lessonsListContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-        root.addView(lessonsListContainer)
-
-        scrollView.addView(root)
-        setContentView(scrollView)
-        scrollView.requestFocus()
-
-        renderDayButtons()
-        renderScheduleList()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        handler.post(tickRunnable)
-        TileService.getUpdater(this).requestUpdate(ScheduleTileService::class.java)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        handler.removeCallbacks(tickRunnable)
-    }
-
-    private fun updateLiveStatus() {
-        val now = Calendar.getInstance()
-        val dayOfWeek = now.get(Calendar.DAY_OF_WEEK)
-        val h = now.get(Calendar.HOUR_OF_DAY)
-        val m = now.get(Calendar.MINUTE)
-        val s = now.get(Calendar.SECOND)
-
-        val dayNames = mapOf(
-            Calendar.MONDAY to "Пн",
-            Calendar.TUESDAY to "Вт",
-            Calendar.WEDNESDAY to "Ср",
-            Calendar.THURSDAY to "Чт",
-            Calendar.FRIDAY to "Пт",
-            Calendar.SATURDAY to "Сб",
-            Calendar.SUNDAY to "Вс"
-        )
-        tvClock.text = String.format(Locale.getDefault(), "%s • %02d:%02d:%02d", dayNames[dayOfWeek] ?: "", h, m, s)
-
-        val status = ScheduleRepo.getLiveStatus()
-        tvTimerBig.setTextColor(Color.parseColor(status.timerColorHex))
-        tvTimerBig.text = status.timerText
-        tvCurrentLabel.text = status.labelText
-        tvCurrentSubject.text = status.currentText
-        tvNextSubject.text = status.nextText
-    }
-
-    private fun renderDayButtons() {
-        dayButtonsContainer.removeAllViews()
-        val days = listOf(
-            Calendar.MONDAY to "Пн",
-            Calendar.TUESDAY to "Вт",
-            Calendar.WEDNESDAY to "Ср",
-            Calendar.THURSDAY to "Чт",
-            Calendar.FRIDAY to "Пт"
-        )
-
-        for ((dayConst, label) in days) {
-            val isSelected = dayConst == selectedDay
-            val btn = TextView(this).apply {
-                text = label
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                setTypeface(Typeface.SANS_SERIF, Typeface.BOLD)
-                setTextColor(if (isSelected) Color.BLACK else Color.WHITE)
-                gravity = Gravity.CENTER
-                background = roundedBg(
-                    if (isSelected) "#30D158" else "#2C2C2E",
-                    dp(12),
-                    "#00000000",
-                    0
-                )
-                setPadding(dp(8), dp(6), dp(8), dp(6))
-                val params = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                params.setMargins(dp(3), 0, dp(3), 0)
-                layoutParams = params
-                setOnClickListener {
-                    selectedDay = dayConst
-                    renderDayButtons()
-                    renderScheduleList()
-                }
-            }
-            dayButtonsContainer.addView(btn)
-        }
-    }
-
-    private fun renderScheduleList() {
-        lessonsListContainer.removeAllViews()
-        val dayLessons = ScheduleRepo.schedule[selectedDay] ?: return
-        val now = Calendar.getInstance()
-        val isToday = now.get(Calendar.DAY_OF_WEEK) == selectedDay
-        val nowMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
-
-        for (i in dayLessons.indices) {
-            val lesson = dayLessons[i]
-            val bell = ScheduleRepo.bells[i]
-            val isCurrent = isToday && nowMinutes >= bell.startTotal && nowMinutes < bell.endTotal
-
-            val itemCard = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                background = roundedBg(
-                    if (isCurrent) "#11321B" else "#141416",
-                    dp(12),
-                    if (isCurrent) "#30D158" else "#262629",
-                    dp(1)
-                )
-                setPadding(dp(12), dp(8), dp(12), dp(8))
-                val params = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                params.setMargins(0, dp(4), 0, dp(4))
-                layoutParams = params
-            }
-
-            val topRow = TextView(this).apply {
-                text = "${lesson.num} урок • ${bell.timeStr}"
-                setTextColor(if (isCurrent) Color.parseColor("#30D158") else Color.parseColor("#8E8E93"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            }
-            itemCard.addView(topRow)
-
-            val bottomRow = TextView(this).apply {
-                text = "${lesson.name}  (каб. ${lesson.room})"
-                setTextColor(Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                setTypeface(Typeface.SANS_SERIF, Typeface.BOLD)
-            }
-            itemCard.addView(bottomRow)
-
-            lessonsListContainer.addView(itemCard)
-        }
-    }
-
-    private fun roundedBg(fillHex: String, radiusPx: Int, strokeHex: String, strokePx: Int): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = radiusPx.toFloat()
-            setColor(Color.parseColor(fillHex))
-            if (strokePx > 0) {
-                setStroke(strokePx, Color.parseColor(strokeHex))
-            }
-        }
-    }
-
-    private fun dp(value: Int): Int {
-        return TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP,
-            value.toFloat(),
-            resources.displayMetrics
-        ).toInt()
-    }
-}
-
-class ScheduleTileService : TileService() {
-
-    override fun onTileRequest(
-        requestParams: RequestBuilders.TileRequest
-    ): ListenableFuture<TileBuilders.Tile> {
-        val status = ScheduleRepo.getLiveStatus()
-
-        val refreshClickable = ModifiersBuilders.Clickable.Builder()
-            .setId("refresh_tile")
-            .setOnClick(ActionBuilders.LoadAction.Builder().build())
-            .build()
-
-        val openAppClickable = ModifiersBuilders.Clickable.Builder()
-            .setId("open_app")
-            .setOnClick(
-                ActionBuilders.LaunchAction.Builder()
-                    .setAndroidActivity(
-                        ActionBuilders.AndroidActivity.Builder()
-                            .setPackageName(packageName)
-                            .setClassName(MainActivity::class.java.name)
-                            .build()
-                    )
-                    .build()
-            )
-            .build()
-
-        val timerElement = LayoutElementBuilders.Text.Builder()
-            .setText(status.timerText)
-            .setMaxLines(1)
-            .setModifiers(
-                ModifiersBuilders.Modifiers.Builder()
-                    .setClickable(refreshClickable)
-                    .build()
-            )
-            .setFontStyle(
-                LayoutElementBuilders.FontStyle.Builder()
-                    .setSize(DimensionBuilders.sp(17f))
-                    .setWeight(LayoutElementBuilders.FONT_WEIGHT_BOLD)
-                    .setColor(ColorBuilders.argb(Color.parseColor(status.timerColorHex)))
-                    .build()
-            )
-            .build()
-
-        val cardColumn = LayoutElementBuilders.Column.Builder()
-            .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
-            .setModifiers(
-                ModifiersBuilders.Modifiers.Builder()
-                    .setClickable(openAppClickable)
-                    .setBackground(
-                        ModifiersBuilders.Background.Builder()
-                            .setColor(ColorBuilders.argb(Color.parseColor("#1C1C1E")))
-                            .setCorner(
-                                ModifiersBuilders.Corner.Builder()
-                                    .setRadius(DimensionBuilders.dp(16f))
-                                    .build()
-                            )
-                            .build()
-                    )
-                    .setPadding(
-                        ModifiersBuilders.Padding.Builder()
-                            .setAll(DimensionBuilders.dp(10f))
-                            .build()
-                    )
-                    .build()
-            )
-            .addContent(
-                LayoutElementBuilders.Text.Builder()
-                    .setText(status.labelText)
-                    .setMaxLines(1)
-                    .setFontStyle(
-                        LayoutElementBuilders.FontStyle.Builder()
-                            .setSize(DimensionBuilders.sp(11f))
-                            .setColor(ColorBuilders.argb(Color.parseColor("#98989D")))
-                            .build()
-                    )
-                    .build()
-            )
-            .addContent(
-                LayoutElementBuilders.Spacer.Builder()
-                    .setHeight(DimensionBuilders.dp(3f))
-                    .build()
-            )
-            .addContent(
-                LayoutElementBuilders.Text.Builder()
-                    .setText(status.currentText)
-                    .setMaxLines(2)
-                    .setFontStyle(
-                        LayoutElementBuilders.FontStyle.Builder()
-                            .setSize(DimensionBuilders.sp(15f))
-                            .setWeight(LayoutElementBuilders.FONT_WEIGHT_BOLD)
-                            .setColor(ColorBuilders.argb(Color.WHITE))
-                            .build()
-                    )
-                    .build()
-            )
-            .addContent(
-                LayoutElementB
+        tvCurrentLabel = 
