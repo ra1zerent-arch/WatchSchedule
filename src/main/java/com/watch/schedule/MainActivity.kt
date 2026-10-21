@@ -33,6 +33,7 @@ import java.util.Calendar
 import java.util.Locale
 
 data class Lesson(val num: Int, val name: String, val room: String)
+
 data class Bell(val num: Int, val startH: Int, val startM: Int, val endH: Int, val endM: Int) {
     val startTotal get() = startH * 60 + startM
     val endTotal get() = endH * 60 + endM
@@ -138,10 +139,7 @@ object ScheduleRepo {
                 "  x₁ + x₂ = -b  |  x₁ · x₂ = c\n\n" +
                 "• Формулы (ФСУ):\n" +
                 "  (a±b)² = a² ± 2ab + b²\n" +
-                "  a² - b² = (a - b)(a + b)\n\n" +
-                "• Степени и корни:\n" +
-                "  aⁿ · aᵐ = aⁿ⁺ᵐ  |  (aⁿ)ᵐ = aⁿᵐ\n" +
-                "  √(a·b) = √a · √b"
+                "  a² - b² = (a - b)(a + b)"
 
             s.contains("геометр") -> "Шпора: Геометрия" to
                 "• Теорема Пифагора:\n" +
@@ -149,97 +147,25 @@ object ScheduleRepo {
                 "• Площади фигур:\n" +
                 "  Треугольник: S = ½ · a · h\n" +
                 "  Параллелограмм: S = a · h\n" +
-                "  Трапеция: S = ((a + b) / 2) · h\n" +
-                "  Ромб: S = ½ · d₁ · d₂\n\n" +
-                "• Тригонометрия (прям. тр-к):\n" +
-                "  sin α = противолеж / гипотенуза\n" +
-                "  cos α = прилеж / гипотенуза\n" +
-                "  tg α = противолеж / прилеж"
+                "  Трапеция: S = ((a + b) / 2) · h"
 
             s.contains("физик") -> "Шпора: Физика" to
                 "• Тепловые явления:\n" +
                 "  Нагрев: Q = c · m · Δt\n" +
                 "  Плавление: Q = λ · m\n" +
-                "  Парообразование: Q = L · m\n" +
-                "  Сгорание топлива: Q = q · m\n\n" +
+                "  Сгорание: Q = q · m\n\n" +
                 "• Электричество:\n" +
                 "  Закон Ома: I = U / R\n" +
-                "  Сопротивление: R = ρ · l / S\n" +
-                "  Мощность: P = U · I\n" +
-                "  Работа тока: A = U · I · t\n" +
-                "  Закон Джоуля-Ленца: Q = I²Rt"
+                "  Мощность: P = U · I"
 
             s.contains("хими") -> "Шпора: Химия" to
-                "• Основные формулы:\n" +
-                "  Кол-во вещ-ва: n = m / M\n" +
-                "  Объем газа: V = n · Vm (Vm = 22.4 л/моль)\n" +
-                "  Массовая доля: ω = m(в-ва) / m(р-ра)\n\n" +
-                "• Кислоты:\n" +
-                "  HCl (соляная), H₂SO₄ (серная),\n" +
-                "  HNO₃ (азотная), H₃PO₄ (фосфорная),\n" +
-                "  H₂CO₃ (угольная), H₂SiO₃ (кремниевая)\n\n" +
-                "• Ряд активности металлов:\n" +
-                "  Li K Ba Ca Na Mg Al Zn Fe Ni Sn Pb (H₂) Cu Hg Ag Au"
+                "• Формулы:\n" +
+                "  n = m / M\n" +
+                "  V = n · Vm (Vm = 22.4)\n" +
+                "  ω = m(в-ва) / m(р-ра)\n\n" +
+                "• Кислоты: HCl, H₂SO₄, HNO₃"
 
-            s.contains("вероятн") -> "Вероятность и стат." to
-                "• Вероятность события:\n" +
-                "  P(A) = m / n\n" +
-                "  (m — благопр. исходы, n — все)\n\n" +
-                "• Статистика:\n" +
-                "  Среднее арифм. — сумма / кол-во\n" +
-                "  Медиана — число посередине упорядоченного ряда\n" +
-                "  Размах — разность макс. и мин."
-
-            s.contains("русский") -> "Шпора: Русский язык" to
-                "• Чередующиеся корни:\n" +
-                "  -ГАР-/-ГОР- (под удар. А, без — О)\n" +
-                "  -ЗАР-/-ЗОР- (без удар. А)\n" +
-                "  -КАС-/-КОС-, -ЛАГ-/-ЛОЖ- (А перед суффиксом -А-)\n" +
-                "  -РАСТ-/-РАЩ-/-РОС-\n\n" +
-                "• Н и НН в причастиях и прил.:\n" +
-                "  НН: суффиксы -ова-/-ева-, есть приставка (кроме не-), есть завис. слова, от глаг. сов. вида.\n" +
-                "  Н: краткие причастия (сделана)."
-
-            s.contains("английск") -> "Шпора: Английский" to
-                "• Времена глагола:\n" +
-                "  Present Simple: V / Vs (do/does)\n" +
-                "  Present Cont: am/is/are + Ving\n" +
-                "  Past Simple: V2 / Ved (did)\n" +
-                "  Present Perfect: have/has + V3\n" +
-                "  Future Simple: will + V\n\n" +
-                "• Неправильные глаголы:\n" +
-                "  be - was/were - been\n" +
-                "  go - went - gone\n" +
-                "  do - did - done\n" +
-                "  see - saw - seen\n" +
-                "  take - took - taken"
-
-            s.contains("истори") -> "Шпора: История" to
-                "• Важные эпохи (XVIII век):\n" +
-                "  1682–1725 — Петр I\n" +
-                "  1700–1721 — Северная война\n" +
-                "  1703 — Основание СПб\n" +
-                "  1721 — Провозглашение Империи\n" +
-                "  1725–1762 — Дворцовые перевороты\n" +
-                "  1762–1796 — Екатерина II\n" +
-                "  1796–1801 — Павел I"
-
-            s.contains("информат") -> "Шпора: Информатика" to
-                "• Степени двойки:\n" +
-                "  2³=8 | 2⁴=16 | 2⁵=32 | 2⁶=64\n" +
-                "  2⁷=128 | 2⁸=256 | 2⁹=512 | 2¹⁰=1024\n\n" +
-                "• Единицы памяти:\n" +
-                "  1 байт = 8 бит\n" +
-                "  1 Кбайт = 1024 байт\n\n" +
-                "• Логика:\n" +
-                "  И (AND, ∧) — истина, когда оба 1\n" +
-                "  ИЛИ (OR, ∨) — истина, если хотя бы один 1\n" +
-                "  НЕ (NOT, ¬) — инверсия"
-
-            else -> subjectName to
-                "• Полезные фишки часов:\n\n" +
-                "1. Зажми палец на уроке в списке, чтобы временно поменять номер кабинета.\n\n" +
-                "2. Нажми на маленькие часы в самом верху главного экрана, чтобы включить тусклый «Стелс-режим»."
+            else -> subjectName to "• Шпоры и подсказки:\n\n1. Зажми урок для смены кабинета.\n2. Тап по часам сверху — Стелс-режим."
         }
     }
 
@@ -260,7 +186,7 @@ object ScheduleRepo {
                 "#64D2FF",
                 "Расписание 8В",
                 "Уроков сегодня нет",
-                "Пн: Разговор о важном (${getRoom(context, Calendar.MONDAY, 1, "315")})",
+                "Пн: Разговор о важном",
                 100,
                 "Сегодня выходной день",
                 weekendText
@@ -405,11 +331,7 @@ object ScheduleRepo {
         val d = minutesUntilFridayEnd / (24 * 60)
         val h = (minutesUntilFridayEnd % (24 * 60)) / 60
         val m = minutesUntilFridayEnd % 60
-        return if (d > 0) {
-            "До выходных: $d дн $h ч"
-        } else {
-            "До выходных: $h ч $m мин"
-        }
+        return if (d > 0) "До выходных: $d дн $h ч" else "До выходных: $h ч $m мин"
     }
 }
 
@@ -501,4 +423,103 @@ class MainActivity : Activity() {
             )
         }
 
-        tvCurrentLabel = 
+        tvCurrentLabel = TextView(this).apply {
+            setTextColor(Color.parseColor("#98989D"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.CENTER
+        }
+        liveCard.addView(tvCurrentLabel)
+
+        tvCurrentSubject = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTypeface(Typeface.SANS_SERIF, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(2), 0, dp(6))
+        }
+        liveCard.addView(tvCurrentSubject)
+
+        val progressTrack = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            weightSum = 100f
+            background = roundedBg("#2C2C2E", dp(4), "#00000000", 0)
+            val params = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(5)
+            )
+            params.setMargins(dp(8), 0, dp(8), dp(6))
+            layoutParams = params
+        }
+
+        progressFillView = View(this).apply {
+            background = roundedBg("#30D158", dp(4), "#00000000", 0)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0f)
+        }
+        progressEmptyView = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 100f)
+        }
+        progressTrack.addView(progressFillView)
+        progressTrack.addView(progressEmptyView)
+        liveCard.addView(progressTrack)
+
+        tvNextSubject = TextView(this).apply {
+            setTextColor(Color.parseColor("#64D2FF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            gravity = Gravity.CENTER
+        }
+        liveCard.addView(tvNextSubject)
+
+        root.addView(liveCard)
+
+        dayButtonsContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(14), 0, dp(8))
+        }
+        root.addView(dayButtonsContainer)
+
+        lessonsListContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        root.addView(lessonsListContainer)
+
+        val footerCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = roundedBg("#101012", dp(14), "#1F1F24", dp(1))
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            val params = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            params.setMargins(0, dp(12), 0, 0)
+            layoutParams = params
+        }
+
+        tvFooterToday = TextView(this).apply {
+            setTextColor(Color.parseColor("#8E8E93"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.CENTER
+        }
+        footerCard.addView(tvFooterToday)
+
+        tvFooterWeekend = TextView(this).apply {
+            setTextColor(Color.parseColor("#64D2FF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTypeface(Typeface.SANS_SERIF, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(2), 0, dp(4))
+        }
+        footerCard.addView(tvFooterWeekend)
+
+        val tvHint = TextView(this).apply {
+            text = "Тап по уроку — шпора • Зажать — каб.\nТап по часам сверху — Стелс-режим"
+            setTextColor(Color.parseColor("#55555A"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9.5f)
+            gravity = Gravity.CENTER
+        }
+  
