@@ -13,6 +13,18 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.wear.tiles.ActionBuilders
+import androidx.wear.tiles.ColorBuilders
+import androidx.wear.tiles.DimensionBuilders
+import androidx.wear.tiles.LayoutElementBuilders
+import androidx.wear.tiles.ModifiersBuilders
+import androidx.wear.tiles.RequestBuilders
+import androidx.wear.tiles.ResourceBuilders
+import androidx.wear.tiles.TileBuilders
+import androidx.wear.tiles.TileService
+import androidx.wear.tiles.TimelineBuilders
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import java.util.Calendar
 import java.util.Locale
 
@@ -23,9 +35,16 @@ data class Bell(val num: Int, val startH: Int, val startM: Int, val endH: Int, v
     val timeStr get() = String.format(Locale.getDefault(), "%d:%02d – %d:%02d", startH, startM, endH, endM)
 }
 
-class MainActivity : Activity() {
+data class LiveStatus(
+    val timerText: String,
+    val timerColorHex: String,
+    val labelText: String,
+    val currentText: String,
+    val nextText: String
+)
 
-    private val bells = listOf(
+object ScheduleRepo {
+    val bells = listOf(
         Bell(1, 8, 30, 9, 15),
         Bell(2, 9, 25, 10, 10),
         Bell(3, 10, 30, 11, 15),
@@ -35,7 +54,7 @@ class MainActivity : Activity() {
         Bell(7, 14, 40, 15, 25)
     )
 
-    private val schedule = mapOf(
+    val schedule = mapOf(
         Calendar.MONDAY to listOf(
             Lesson(1, "Разговор о важном", "315"),
             Lesson(2, "Алгебра", "220"),
@@ -83,6 +102,88 @@ class MainActivity : Activity() {
         )
     )
 
+    fun getLiveStatus(): LiveStatus {
+        val now = Calendar.getInstance()
+        val dayOfWeek = now.get(Calendar.DAY_OF_WEEK)
+        val nowMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+
+        val todayLessons = schedule[dayOfWeek]
+            ?: return LiveStatus(
+                "Выходной!",
+                "#64D2FF",
+                "Расписание 8В",
+                "Уроков сегодня нет",
+                "Пн: Разговор о важном (315)"
+            )
+
+        val firstBell = bells.first()
+        val lastBell = bells.last()
+
+        if (nowMinutes < firstBell.startTotal) {
+            val diffMin = firstBell.startTotal - nowMinutes
+            val firstLesson = todayLessons.first()
+            return LiveStatus(
+                "До уроков: $diffMin мин",
+                "#FFD60A",
+                "Скоро 1 урок (8:30)",
+                "${firstLesson.name} (${firstLesson.room})",
+                "Дальше: ${todayLessons[1].name} (${todayLessons[1].room})"
+            )
+        }
+
+        if (nowMinutes >= lastBell.endTotal) {
+            return LiveStatus(
+                "Уроки кончились!",
+                "#30D158",
+                "Свободен",
+                "Можно идти домой",
+                "Хорошего отдыха!"
+            )
+        }
+
+        for (i in bells.indices) {
+            val bell = bells[i]
+            val lesson = todayLessons[i]
+
+            if (nowMinutes >= bell.startTotal && nowMinutes < bell.endTotal) {
+                val leftMin = bell.endTotal - nowMinutes
+                val nextStr = if (i + 1 < todayLessons.size) {
+                    val nextLesson = todayLessons[i + 1]
+                    "Дальше: ${nextLesson.name} (${nextLesson.room})"
+                } else {
+                    "Это последний урок!"
+                }
+                return LiveStatus(
+                    "Звонок через $leftMin мин",
+                    "#30D158",
+                    "Сейчас ${bell.num} урок (${bell.timeStr})",
+                    "${lesson.name} • каб. ${lesson.room}",
+                    nextStr
+                )
+            }
+
+            if (i + 1 < bells.size) {
+                val nextBell = bells[i + 1]
+                if (nowMinutes >= bell.endTotal && nowMinutes < nextBell.startTotal) {
+                    val leftMin = nextBell.startTotal - nowMinutes
+                    val nextLesson = todayLessons[i + 1]
+                    return LiveStatus(
+                        "Перемена! $leftMin мин",
+                        "#FF9F0A",
+                        "Иди на ${nextBell.num} урок",
+                        "${nextLesson.name} • каб. ${nextLesson.room}",
+                        "Звонок в ${String.format(Locale.getDefault(), "%d:%02d", nextBell.startH, nextBell.startM)}"
+                    )
+                }
+            }
+        }
+
+        return LiveStatus("Расписание 8В", "#30D158", "", "", "")
+    }
+}
+
+class MainActivity : Activity() {
+
     private lateinit var tvClock: TextView
     private lateinit var tvTimerBig: TextView
     private lateinit var tvCurrentLabel: TextView
@@ -104,7 +205,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
 
         val today = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
-        selectedDay = if (schedule.containsKey(today)) today else Calendar.MONDAY
+        selectedDay = if (ScheduleRepo.schedule.containsKey(today)) today else Calendar.MONDAY
 
         val scrollView = ScrollView(this).apply {
             setBackgroundColor(Color.BLACK)
@@ -198,6 +299,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         handler.post(tickRunnable)
+        TileService.getUpdater(this).requestUpdate(ScheduleTileService::class.java)
     }
 
     override fun onPause() {
@@ -211,7 +313,6 @@ class MainActivity : Activity() {
         val h = now.get(Calendar.HOUR_OF_DAY)
         val m = now.get(Calendar.MINUTE)
         val s = now.get(Calendar.SECOND)
-        val nowMinutes = h * 60 + m
 
         val dayNames = mapOf(
             Calendar.MONDAY to "Пн",
@@ -224,73 +325,12 @@ class MainActivity : Activity() {
         )
         tvClock.text = String.format(Locale.getDefault(), "%s • %02d:%02d:%02d", dayNames[dayOfWeek] ?: "", h, m, s)
 
-        val todayLessons = schedule[dayOfWeek]
-        if (todayLessons == null) {
-            tvTimerBig.setTextColor(Color.parseColor("#64D2FF"))
-            tvTimerBig.text = "Выходной!"
-            tvCurrentLabel.text = "Расписание 8В"
-            tvCurrentSubject.text = "Уроков сегодня нет"
-            tvNextSubject.text = "Нажми Пн ниже для просмотра"
-            return
-        }
-
-        val firstBell = bells.first()
-        val lastBell = bells.last()
-
-        if (nowMinutes < firstBell.startTotal) {
-            val diffMin = firstBell.startTotal - nowMinutes
-            tvTimerBig.setTextColor(Color.parseColor("#FFD60A"))
-            tvTimerBig.text = "До уроков: $diffMin мин"
-            tvCurrentLabel.text = "Скоро начало (8:30)"
-            val firstLesson = todayLessons.first()
-            tvCurrentSubject.text = "${firstLesson.name} (${firstLesson.room})"
-            tvNextSubject.text = "Дальше: ${todayLessons[1].name} (${todayLessons[1].room})"
-            return
-        }
-
-        if (nowMinutes >= lastBell.endTotal) {
-            tvTimerBig.setTextColor(Color.parseColor("#30D158"))
-            tvTimerBig.text = "Уроки кончились!"
-            tvCurrentLabel.text = "Свободен"
-            tvCurrentSubject.text = "Можно идти домой"
-            tvNextSubject.text = "Хорошего отдыха!"
-            return
-        }
-
-        for (i in bells.indices) {
-            val bell = bells[i]
-            val lesson = todayLessons[i]
-
-            if (nowMinutes >= bell.startTotal && nowMinutes < bell.endTotal) {
-                val leftMin = bell.endTotal - nowMinutes
-                tvTimerBig.setTextColor(Color.parseColor("#30D158"))
-                tvTimerBig.text = "Звонок через $leftMin мин"
-                tvCurrentLabel.text = "Сейчас ${bell.num} урок (${bell.timeStr})"
-                tvCurrentSubject.text = "${lesson.name} • каб. ${lesson.room}"
-
-                if (i + 1 < todayLessons.size) {
-                    val nextLesson = todayLessons[i + 1]
-                    tvNextSubject.text = "Следующий: ${nextLesson.name} (${nextLesson.room})"
-                } else {
-                    tvNextSubject.text = "Это последний урок!"
-                }
-                return
-            }
-
-            if (i + 1 < bells.size) {
-                val nextBell = bells[i + 1]
-                if (nowMinutes >= bell.endTotal && nowMinutes < nextBell.startTotal) {
-                    val leftMin = nextBell.startTotal - nowMinutes
-                    val nextLesson = todayLessons[i + 1]
-                    tvTimerBig.setTextColor(Color.parseColor("#FF9F0A"))
-                    tvTimerBig.text = "Перемена! $leftMin мин"
-                    tvCurrentLabel.text = "Готовься к ${nextBell.num} уроку"
-                    tvCurrentSubject.text = "${nextLesson.name} • каб. ${nextLesson.room}"
-                    tvNextSubject.text = "Начало в ${String.format(Locale.getDefault(), "%d:%02d", nextBell.startH, nextBell.startM)}"
-                    return
-                }
-            }
-        }
+        val status = ScheduleRepo.getLiveStatus()
+        tvTimerBig.setTextColor(Color.parseColor(status.timerColorHex))
+        tvTimerBig.text = status.timerText
+        tvCurrentLabel.text = status.labelText
+        tvCurrentSubject.text = status.currentText
+        tvNextSubject.text = status.nextText
     }
 
     private fun renderDayButtons() {
@@ -336,14 +376,14 @@ class MainActivity : Activity() {
 
     private fun renderScheduleList() {
         lessonsListContainer.removeAllViews()
-        val dayLessons = schedule[selectedDay] ?: return
+        val dayLessons = ScheduleRepo.schedule[selectedDay] ?: return
         val now = Calendar.getInstance()
         val isToday = now.get(Calendar.DAY_OF_WEEK) == selectedDay
         val nowMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
 
         for (i in dayLessons.indices) {
             val lesson = dayLessons[i]
-            val bell = bells[i]
+            val bell = ScheduleRepo.bells[i]
             val isCurrent = isToday && nowMinutes >= bell.startTotal && nowMinutes < bell.endTotal
 
             val itemCard = LinearLayout(this).apply {
@@ -401,3 +441,101 @@ class MainActivity : Activity() {
         ).toInt()
     }
 }
+
+class ScheduleTileService : TileService() {
+
+    override fun onTileRequest(
+        requestParams: RequestBuilders.TileRequest
+    ): ListenableFuture<TileBuilders.Tile> {
+        val status = ScheduleRepo.getLiveStatus()
+
+        val refreshClickable = ModifiersBuilders.Clickable.Builder()
+            .setId("refresh_tile")
+            .setOnClick(ActionBuilders.LoadAction.Builder().build())
+            .build()
+
+        val openAppClickable = ModifiersBuilders.Clickable.Builder()
+            .setId("open_app")
+            .setOnClick(
+                ActionBuilders.LaunchAction.Builder()
+                    .setAndroidActivity(
+                        ActionBuilders.AndroidActivity.Builder()
+                            .setPackageName(packageName)
+                            .setClassName(MainActivity::class.java.name)
+                            .build()
+                    )
+                    .build()
+            )
+            .build()
+
+        val timerElement = LayoutElementBuilders.Text.Builder()
+            .setText(status.timerText)
+            .setMaxLines(1)
+            .setModifiers(
+                ModifiersBuilders.Modifiers.Builder()
+                    .setClickable(refreshClickable)
+                    .build()
+            )
+            .setFontStyle(
+                LayoutElementBuilders.FontStyle.Builder()
+                    .setSize(DimensionBuilders.sp(17f))
+                    .setWeight(LayoutElementBuilders.FONT_WEIGHT_BOLD)
+                    .setColor(ColorBuilders.argb(Color.parseColor(status.timerColorHex)))
+                    .build()
+            )
+            .build()
+
+        val cardColumn = LayoutElementBuilders.Column.Builder()
+            .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
+            .setModifiers(
+                ModifiersBuilders.Modifiers.Builder()
+                    .setClickable(openAppClickable)
+                    .setBackground(
+                        ModifiersBuilders.Background.Builder()
+                            .setColor(ColorBuilders.argb(Color.parseColor("#1C1C1E")))
+                            .setCorner(
+                                ModifiersBuilders.Corner.Builder()
+                                    .setRadius(DimensionBuilders.dp(16f))
+                                    .build()
+                            )
+                            .build()
+                    )
+                    .setPadding(
+                        ModifiersBuilders.Padding.Builder()
+                            .setAll(DimensionBuilders.dp(10f))
+                            .build()
+                    )
+                    .build()
+            )
+            .addContent(
+                LayoutElementBuilders.Text.Builder()
+                    .setText(status.labelText)
+                    .setMaxLines(1)
+                    .setFontStyle(
+                        LayoutElementBuilders.FontStyle.Builder()
+                            .setSize(DimensionBuilders.sp(11f))
+                            .setColor(ColorBuilders.argb(Color.parseColor("#98989D")))
+                            .build()
+                    )
+                    .build()
+            )
+            .addContent(
+                LayoutElementBuilders.Spacer.Builder()
+                    .setHeight(DimensionBuilders.dp(3f))
+                    .build()
+            )
+            .addContent(
+                LayoutElementBuilders.Text.Builder()
+                    .setText(status.currentText)
+                    .setMaxLines(2)
+                    .setFontStyle(
+                        LayoutElementBuilders.FontStyle.Builder()
+                            .setSize(DimensionBuilders.sp(15f))
+                            .setWeight(LayoutElementBuilders.FONT_WEIGHT_BOLD)
+                            .setColor(ColorBuilders.argb(Color.WHITE))
+                            .build()
+                    )
+                    .build()
+            )
+            .addContent(
+                LayoutElementB
